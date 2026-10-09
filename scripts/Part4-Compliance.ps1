@@ -9,19 +9,21 @@ $outDir        = Join-Path $root 'output'
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 
 # Correctifs obligatoires (on ignore les lignes vides ou invalides)
-$required = Get-Content $requiredFile |
+$required = @(Get-Content $requiredFile |
     ForEach-Object { $_.Trim().ToUpper() } |
-    Where-Object { $_ -match '^KB\d+$' }
+    Where-Object { $_ -match '^KB\d+$' })
 
-$localIPs = (Get-NetIPAddress -AddressFamily IPv4).IPAddress
+$localIPs     = (Get-NetIPAddress -AddressFamily IPv4).IPAddress
+$dateControle = Get-Date -Format 'dd/MM/yyyy HH:mm:ss'
 
 $results = foreach ($line in Get-Content $computersFile) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
     $name, $ip = $line.Split(';') | ForEach-Object { $_.Trim() }
 
-    $statut    = ''
-    $manquants = ''
-    $erreur    = ''
+    $statut      = ''
+    $manquants   = ''
+    $nbManquants = '-'
+    $erreur      = ''
 
     if (-not (Test-Connection $ip -Count 1 -Quiet)) {
         $statut = 'INACCESSIBLE'
@@ -41,7 +43,8 @@ $results = foreach ($line in Get-Content $computersFile) {
                 if ($Credential) { $params.Credential = $Credential }
                 $installed = Invoke-Command @params
             }
-            $missing = @($required | Where-Object { $_ -notin $installed })
+            $missing     = @($required | Where-Object { $_ -notin $installed })
+            $nbManquants = $missing.Count
             if ($missing.Count -eq 0) {
                 $statut = 'CONFORME'
             }
@@ -57,18 +60,21 @@ $results = foreach ($line in Get-Content $computersFile) {
     }
 
     [PSCustomObject]@{
-        Poste       = $name
-        AdresseIP   = $ip
-        Statut      = $statut
-        KBManquants = $manquants
-        Erreur      = $erreur
+        Poste         = $name
+        AdresseIP     = $ip
+        KBRequises    = $required.Count
+        NbKBManquants = $nbManquants
+        KBManquants   = $manquants
+        Statut        = $statut
+        DateControle  = $dateControle
+        Erreur        = $erreur
     }
 }
 
 $results | Export-Csv "$outDir\ComplianceReport.csv" -Delimiter ';' -NoTypeInformation -Encoding UTF8
 $results | Format-Table -AutoSize
 
-# Taux de conformite
+# Taux global de conformite (sans les postes inaccessibles)
 $accessibles = @($results | Where-Object { $_.Statut -ne 'INACCESSIBLE' })
 $conformes   = @($results | Where-Object { $_.Statut -eq 'CONFORME' })
 $inacc       = @($results | Where-Object { $_.Statut -eq 'INACCESSIBLE' })
