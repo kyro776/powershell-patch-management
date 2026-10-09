@@ -72,7 +72,7 @@ $results = foreach ($line in Get-Content $computersFile) {
 }
 
 $results | Export-Csv "$outDir\ComplianceReport.csv" -Delimiter ';' -NoTypeInformation -Encoding UTF8
-$results | Format-Table -AutoSize
+$results | Select-Object Poste, KBRequises, NbKBManquants, KBManquants, Statut, DateControle | Format-Table -AutoSize
 
 # Taux global de conformite (sans les postes inaccessibles)
 $accessibles = @($results | Where-Object { $_.Statut -ne 'INACCESSIBLE' })
