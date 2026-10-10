@@ -6,7 +6,8 @@
 param(
     [string]$ComputersFile = ".\config\computers.txt",
     [string]$OutputCsv     = ".\output\Inventory.csv",
-    [string]$UserName      = "DESKTOP-33OJEVG\Diallo"
+    [string]$UserName      = "DESKTOP-33OJEVG\Diallo",
+    [System.Management.Automation.PSCredential]$Credential
 )
 
 if (-not (Test-Path $ComputersFile)) {
@@ -14,9 +15,11 @@ if (-not (Test-Path $ComputersFile)) {
     return
 }
 
-# Identifiants demandes a l'execution : aucun mot de passe dans le code
-$password   = Read-Host "Mot de passe de $UserName" -AsSecureString
-$credential = New-Object System.Management.Automation.PSCredential ($UserName, $password)
+# Identifiants : fournis par -Credential, sinon demandes a l'execution (aucun mot de passe dans le code)
+if (-not $Credential) {
+    $password   = Read-Host "Mot de passe de $UserName" -AsSecureString
+    $Credential = New-Object System.Management.Automation.PSCredential ($UserName, $password)
+}
 
 # Adresses IP de la machine locale (une machine ne peut pas s'administrer elle-meme par WinRM en workgroup)
 $localIPs = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue).IPAddress
@@ -68,7 +71,7 @@ $inventory = foreach ($line in $lines) {
             if (-not (Test-Connection -ComputerName $ip -Count 1 -Quiet -ErrorAction SilentlyContinue)) {
                 throw "Ping sans reponse"
             }
-            $data = Invoke-Command -ComputerName $ip -Credential $credential -ScriptBlock $collect -ErrorAction Stop
+            $data = Invoke-Command -ComputerName $ip -Credential $Credential -ScriptBlock $collect -ErrorAction Stop
         }
 
         $row.Etat = "Accessible"
@@ -84,8 +87,8 @@ $inventory = foreach ($line in $lines) {
     [PSCustomObject]$row
 }
 
-# Tableau recapitulatif
-$inventory | Format-Table Poste, AdresseIP, Windows, Architecture, DernierDemarrage, WindowsUpdate, Etat -AutoSize
+# Tableau recapitulatif (colonnes courtes pour tenir dans la console ; le detail complet est dans le CSV)
+$inventory | Format-Table Poste, AdresseIP, Etat, Architecture, RAM_Go, DisqueLibre_Go, DernierDemarrage, WindowsUpdate -AutoSize
 
 # Export CSV (dossier output/ ignore par Git)
 $dir = Split-Path $OutputCsv -Parent
